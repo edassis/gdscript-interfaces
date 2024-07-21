@@ -1,15 +1,17 @@
 class_name KillableObject extends Node
 
-const implements = [preload("res://example/can_take_damage.gd")]
-#const implements = ["CanTakeDamage"]
+# const implements = [preload("res://example/can_take_damage.gd")]
+const implements = ["IDamagable"]
+
+signal damage
 
 
-var tester
-
-signal foobar
-
-func deal_damage() -> void:
+func deal_damage(dmg: int) -> void:
 	pass
 
 func _ready() -> void:
-	print(Interfaces.implements(self, CanTakeDamage))
+	# print(Interfaces.implements(self, IDamagable))
+	pass
+
+
+# Vallidation occurs at project startup.

@@ -1,8 +1,6 @@
-class_name CanTakeDamage extends Object
+class_name IDamagable extends Object
 
-var tester
+signal damage
 
-signal foobar
-
-func deal_damage():
+func deal_damage(dmg):
 	pass
