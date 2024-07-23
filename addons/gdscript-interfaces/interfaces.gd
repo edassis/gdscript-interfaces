@@ -10,11 +10,14 @@ extends Node
 ##
 ## @tutorial: https://github.com/nsrosenqvist/gdscript-interfaces/tree/main/addons/gdscript-interfaces#readme
 ##
+const LOCAL_PATH := "res://"
+const IGNORE_DIRS: Array[String] = [".godot", ".git", "build"]
 
 @export var allow_string_classes: bool = true
 @export var strict_validation: bool = true
-@export var validate_dirs: Array[String] = ["res://"]
 
+var _global_class_list := ProjectSettings.get_global_class_list()
+var _global_class_names := _column(_global_class_list, "class").map(func(el): return str(el))
 var _interfaces := {}
 var _identifiers := {}
 var _implements := {}
@@ -74,18 +77,21 @@ func implementations(objects: Array, interfaces, validate=false) -> Array:
 
 	return result
 
-func _ready():
-	# Pre-validate all interfaces on game start
-	_validate_all_implementations()
+func _init():
+	if OS.has_feature("editor"):
+		print('Global Class List:')
+		print(_global_class_list)
+		# Pre-validate all interfaces on game start
+		_validate_all_implementations()
 
 func _validate_all_implementations() -> void:
 	# Get all script files
-	var files = []
+	var files := _get_all_files(LOCAL_PATH)
+	var scripts = []
 
-	for d in validate_dirs:
-		files.append_array(_files(d, true))
-
-	var scripts = _filter(files, _only_scripts)
+	for f in files:
+		if f.ends_with(".gd"):
+			scripts.append(f)
 
 	# Validate all scripts that has the constant "implements"
 	for s in scripts:
@@ -96,38 +102,40 @@ func _validate_all_implementations() -> void:
 		if implemented.size() > 0:
 			implements(script, implemented, strict_validation, true)
 
-func _only_scripts(file: String) -> bool:
-	return file.ends_with(".gd")
+func _get_all_files(path: String) -> PackedStringArray:
+	var cur_dir := DirAccess.open(path)
+	if not cur_dir:
+		printerr("An error occurred when trying to access '%s'." % [path])
+		return []
 
-func _files(path: String, recursive=false) -> Array:
-	var result = []
-	var dir = DirAccess.open(path)
-	if dir:
-		dir.list_dir_begin()
-		var file_name = dir.get_next()
+	cur_dir.include_navigational=false	# ignore '.' and '..'
+	var files := cur_dir.get_files()
+	for i in range(files.size()):
+		files[i] = path.path_join(files[i])
+	var dirs := cur_dir.get_directories()
+	for i in range(dirs.size()):
+		dirs[i] = path.path_join(dirs[i])
 
-		while file_name != "":
-			if not (file_name == "." or file_name == ".."):
-				if dir.current_is_dir():
-					if recursive:
-						result.append_array(_files(path.path_join(file_name), true))
-				else:
-					result.append(path.path_join(file_name))
+	var i := 0
+	while i < dirs.size():
+		var d = dirs[i]
+		cur_dir.change_dir(d)
 
-			file_name = dir.get_next()
-	else:
-		printerr("An error occurred when trying to access '" + path + "'")
+		var path_tokens = d.split('/')
+		var dir_name = path_tokens[path_tokens.size()-1]
+		if dir_name not in IGNORE_DIRS:
+			var nfiles := cur_dir.get_files()
+			for j in range(nfiles.size()):
+				nfiles[j] = cur_dir.get_current_dir().path_join(nfiles[j])
+			files.append_array(nfiles)
 
-	return result
+			var ndirs := cur_dir.get_directories()
+			for j in range(ndirs.size()):
+				ndirs[j] = cur_dir.get_current_dir().path_join(ndirs[j])
+			dirs.append_array(ndirs)
+		i+=1
 
-func _filter(objects: Array, function: Callable) -> Array:
-	var result = []
-
-	for object in objects:
-		if function.call(object):
-			result.append(object)
-
-	return result
+	return files
 
 func _column(rows: Array, key: String) -> Array:
 	var result := []
@@ -143,6 +151,7 @@ func _get_script(implementation) -> GDScript:
 
 	return implementation
 
+# Validate implementation's _implements_ const usage.
 func _get_implements(implementation: Resource) -> Array:
 	var script: GDScript = _get_script(implementation)
 	var lookup: String = str(script)
@@ -159,9 +168,7 @@ func _get_implements(implementation: Resource) -> Array:
 			if interface is String:
 				if not interface.begins_with("I"):
 					assert(false, "Interface '%s' not starts with 'I' (Path: '%s')." % [interface, script.resource_path])
-				var global_class_names = _column(ProjectSettings.get_global_class_list(), "class") \
-						.map(func(el): return str(el))
-				if interface not in global_class_names:
+				if interface not in _global_class_names:
 					assert(false, "Interface '%s' not found in global class list. Check if declaration is correct in '%s'." % [interface, script.resource_path])
 				if not allow_string_classes:
 					assert(false, "Cannot use string type in implements as 'allow_string_classes' is false. ('%s' in %s)" % [interface, lookup])
@@ -219,7 +226,6 @@ func _validate_implementation(script: GDScript, interface: GDScript, assert_on_f
 
 	# Check signals
 	var signals = _column(script.get_script_signal_list(), "name")
-
 	for s in _column(interface.get_script_signal_list(), "name"):
 		if not (s in signals):
 			if assert_on_fail:
@@ -229,7 +235,6 @@ func _validate_implementation(script: GDScript, interface: GDScript, assert_on_f
 
 	# Check methods
 	var methods = _column(script.get_script_method_list(), "name")
-
 	for m in _column(interface.get_script_method_list(), "name"):
 		if not (m in methods):
 			if assert_on_fail:
@@ -250,3 +255,9 @@ func _validate(implementation, interface: GDScript, assert_on_fail=false) -> boo
 	_interfaces[lookup] = _validate_implementation(script, interface, assert_on_fail)
 
 	return _interfaces[lookup]
+
+
+# * Only works when running the project from the editor.
+# * Runs in the same thread as the game.
+# TODO: Refactor the code to run in a isolated thread.
+# TODO: Research if is possible to run it in the editor, without needing to run the game (F5).
