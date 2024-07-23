@@ -80,10 +80,6 @@ For big projects with lots of "class_name" scripts this should be off to safe me
 
 If strict validation is off, the `implements` method will only check if an entity has the provided interfaces in its `implements` constant. This may be preferable if proper validation turns out to incur a significant performance penalty (I haven't tested this system on larger projects). However, each check are usually only run once, since the results of validations are cached. Note that disabling strict validation pretty much removes the benefits of having interfaces in the first place.
 
-#### @export var validate_dirs: Array[String] = ["res://"]
-
-This option sets what directories the library should scan for classes that implements interfaces in. By default it's set to the project root, but it should preferably be changed to something more specific like "res://src/", or "res://src/contracts/". The option has no effect if the library is configured to only do runtime validation.
-
 
 ## License
 
