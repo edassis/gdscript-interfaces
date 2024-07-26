@@ -15,6 +15,7 @@ const IGNORE_DIRS: Array[String] = [".godot", ".git", "build"]
 
 @export var allow_string_classes: bool = true
 @export var strict_validation: bool = true
+@export var strict_interface_name: bool = true
 
 var _global_class_list := ProjectSettings.get_global_class_list()
 var _global_class_names := _column(_global_class_list, "class").map(func(el): return str(el))
@@ -47,15 +48,16 @@ func implements(implementation, interfaces, validate=strict_validation, assert_o
 		if not implemented.has(i):
 			return false
 
+		var implementation_id: String = _get_identifier(script)
+		var interface_id: String = _get_identifier(i)
+
 		if validate:
 			if not _validate(script, i, assert_on_fail):
 				return false
 		else:
-			if not (i in implemented):
+			if i not in implemented:
 				if assert_on_fail:
-					var implementation_id: String = _get_identifier(script)
-					var interface_id: String = _get_identifier(i)
-					var lookup: String = str(script) + "==" + str(i)
+					#var lookup: String = str(script) + "==" + str(i)
 					assert(false, "'%s' doesnt implement '%s'. As it not has a script." % [implementation_id, interface_id])
 				else:
 					return false
@@ -79,8 +81,8 @@ func implementations(objects: Array, interfaces, validate=false) -> Array:
 
 func _init():
 	if OS.has_feature("editor"):
-		print('Global Class List:')
-		print(_global_class_list)
+		#print('Global Class List:')
+		#print(_global_class_list)
 		# Pre-validate all interfaces on game start
 		_validate_all_implementations()
 
@@ -166,12 +168,12 @@ func _get_implements(implementation: Resource) -> Array:
 		var interfaces: Array[GDScript] = []
 		for interface in consts["implements"]:
 			if interface is String:
-				if not interface.begins_with("I"):
-					assert(false, "Interface '%s' not starts with 'I' (Path: '%s')." % [interface, script.resource_path])
-				if interface not in _global_class_names:
-					assert(false, "Interface '%s' not found in global class list. Check if declaration is correct in '%s'." % [interface, script.resource_path])
-				if not allow_string_classes:
-					assert(false, "Cannot use string type in implements as 'allow_string_classes' is false. ('%s' in %s)" % [interface, lookup])
+				if strict_interface_name:
+					assert(interface.begins_with("I"), "Interface '%s' not starts with 'I' (Path: '%s')." % [interface, script.resource_path])
+				assert(interface in _global_class_names, "Interface '%s' not found in global class list. Check if declaration is correct in '%s'." % [interface, script.resource_path])
+				assert(allow_string_classes, "Cannot use string type in implements as 'allow_string_classes' is false. ('%s' in %s)" % [interface, lookup])
+				# WARN: Collateral effect on release mode, the asserts will be stripped out
+				# and the execution will follow
 				interfaces.append(_get_interface_script(interface))
 			elif interface is GDScript:
 				interfaces.append(interface)
@@ -261,3 +263,4 @@ func _validate(implementation, interface: GDScript, assert_on_fail=false) -> boo
 # * Runs in the same thread as the game.
 # TODO: Refactor the code to run in a isolated thread.
 # TODO: Research if is possible to run it in the editor, without needing to run the game (F5).
+# https://gamedev.stackexchange.com/questions/208348/is-there-a-way-to-instantiate-a-custom-class-decided-at-runtime-in-gdscript
